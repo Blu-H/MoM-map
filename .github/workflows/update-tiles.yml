@@ -50,10 +50,10 @@ jobs:
 
       - name: Prepare deployment
         run: |
-          mkdir -p deploy/data
-          cp map.html                deploy/index.html
-          cp data/tiles/watersheds.pmtiles deploy/data/
-          cp data/tiles/metadata.json      deploy/data/
+          mkdir -p deploy/data/tiles
+          cp map.html                      deploy/index.html
+          cp data/tiles/watersheds.pmtiles deploy/data/tiles/
+          cp data/tiles/metadata.json      deploy/data/tiles/
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages
