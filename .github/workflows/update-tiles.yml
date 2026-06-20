@@ -46,7 +46,7 @@ jobs:
         shell: bash -el {0}
         env:
           MOM_CSV_URL: ${{ vars.MOM_CSV_URL }}
-        run: python map_viewer/update_tiles.py --once
+        run: python update_tiles.py --once
 
       - name: Prepare deployment
         run: |
