@@ -30,12 +30,15 @@ from osgeo import gdal, ogr
 load_dotenv()
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-REPO_DIR = SCRIPT_DIR.parent
+REPO_DIR = SCRIPT_DIR
 SHP_PATH = REPO_DIR / "data" / "watershed_shp" / "Watershed_pfaf_id.shp"
-OUT_DIR = SCRIPT_DIR / "data"
+OUT_DIR = SCRIPT_DIR / "data" / "tiles"
 PMTILES_OUT = OUT_DIR / "watersheds.pmtiles"
 GEOJSON_TMP = OUT_DIR / "watersheds.geojson"
 METADATA = OUT_DIR / "metadata.json"
+
+if not os.path.exists(OUT_DIR):
+    os.mkdir(OUT_DIR)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -52,8 +55,27 @@ MAXZOOM = 10
 
 
 def fetch_latest_csv_info():
-    r = requests.get(CSV_BASE_URL, timeout=30)
-    r.raise_for_status()
+    max_retries = 5
+    retry_delay = 2  # seconds
+    r = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            r = requests.get(CSV_BASE_URL, timeout=30)
+            r.raise_for_status()
+            break  # Success, exit the loop
+        except Exception as e:
+            if attempt < max_retries:
+                wait_time = retry_delay * attempt
+                print(
+                    f"  CSV fetch attempt {attempt} failed: {e}. Retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+            else:
+                print(f"  CSV fetch failed after {max_retries} attempts: {e}")
+                raise
+
+    # Parse response
     names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
     if not names:
         return None

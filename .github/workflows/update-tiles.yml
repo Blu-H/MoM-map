@@ -48,8 +48,8 @@ jobs:
         run: |
           mkdir -p deploy/data
           cp map.html                deploy/index.html
-          cp data/watersheds.pmtiles deploy/data/
-          cp data/metadata.json      deploy/data/
+          cp data/tiles/watersheds.pmtiles deploy/data/
+          cp data/tiles/metadata.json      deploy/data/
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages
