@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# map_viewer generated files
+pygeoapi-config.resolved.yml
+pygeoapi-config.local.yml
+pygeoapi-openapi.yml
+

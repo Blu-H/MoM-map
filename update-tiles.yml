@@ -1,0 +1,57 @@
+# GitHub Actions workflow — copy this file to .github/workflows/update-tiles.yml
+#
+# Runs every 30 minutes (and on relevant pushes / manual trigger).
+# Generates PMTiles from the latest Final_Attributes CSV and deploys
+# map.html + data/ to the gh-pages branch for GitHub Pages.
+
+name: Update map tiles
+
+on:
+  schedule:
+    - cron: '30 1,6,13,18 * * *'
+  push:
+    branches: [main, interactive-map_pmtiles]
+    paths:
+      - 'map_viewer/map.html'
+      - 'map_viewer/update_tiles.py'
+      - 'map_viewer/environment.yml'
+      - 'data/watershed_shp/**'
+  workflow_dispatch:
+
+jobs:
+  update-tiles:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: map_viewer/environment.yml
+          activate-environment: mom-map
+          miniforge-version: latest
+          auto-activate-base: false
+
+      - name: Generate PMTiles
+        shell: bash -el {0}
+        env:
+          MOM_CSV_URL: ${{ vars.MOM_CSV_URL }}
+        run: python map_viewer/update_tiles.py --once
+
+      - name: Prepare deployment
+        run: |
+          mkdir -p deploy/data
+          cp map_viewer/map.html                deploy/index.html
+          cp map_viewer/data/watersheds.pmtiles deploy/data/
+          cp map_viewer/data/metadata.json      deploy/data/
+          touch deploy/.nojekyll
+
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: deploy
+          clean: true
