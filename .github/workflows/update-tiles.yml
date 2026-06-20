@@ -10,12 +10,16 @@ on:
   schedule:
     - cron: '30 1,6,13,18 * * *'
   push:
-    branches: [main, interactive-map_pmtiles]
+    branches: [main, dev]
     paths:
       - 'map.html'
       - 'update_tiles.py'
       - 'environment.yml'
       - 'data/watershed_shp/**'
+  pull_request:
+    branches:
+      - dev
+      - main
   workflow_dispatch:
 
 jobs:
@@ -36,7 +40,7 @@ jobs:
           auto-activate-base: false
 
       - name: Unzip shapefile
-        run: unzip -o data/watershed_shp/watershed_shp.zip -d data/watershed_shp/
+        run: unzip -o data/watershed_shp/Watershed_pfaf_id.shp.zip -d data/watershed_shp/
 
       - name: Generate PMTiles
         shell: bash -el {0}

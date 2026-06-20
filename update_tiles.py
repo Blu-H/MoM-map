@@ -29,10 +29,9 @@ from osgeo import gdal, ogr
 
 load_dotenv()
 
-SCRIPT_DIR = Path(__file__).parent.resolve()
-REPO_DIR = SCRIPT_DIR
+REPO_DIR = Path(__file__).parent.resolve()
 SHP_PATH = REPO_DIR / "data" / "watershed_shp" / "Watershed_pfaf_id.shp"
-OUT_DIR = SCRIPT_DIR / "data" / "tiles"
+OUT_DIR = REPO_DIR / "data" / "tiles"
 PMTILES_OUT = OUT_DIR / "watersheds.pmtiles"
 GEOJSON_TMP = OUT_DIR / "watersheds.geojson"
 METADATA = OUT_DIR / "metadata.json"
@@ -48,8 +47,8 @@ if not _csv_url:
     sys.exit(1)
 CSV_BASE_URL: str = _csv_url
 ALERT_RANK = {"Warning": 3, "Watch": 2, "Advisory": 1, "Information": 0}
-MINZOOM = 5
-MAXZOOM = 10
+MINZOOM = 2
+MAXZOOM = 6
 
 # ── CSV discovery ─────────────────────────────────────────────────────────────
 
@@ -169,7 +168,8 @@ def regenerate_pmtiles(alert_df, csv_name):
         datasetCreationOptions=[
             f"MINZOOM={MINZOOM}",
             f"MAXZOOM={MAXZOOM}",
-            "SIMPLIFICATION=0",  # disable GDAL auto-simplification; prevents destroyed geometries at low zoom
+            "SIMPLIFICATION=10",
+            "SIMPLIFICATION_MAX_ZOOM=2",  # preserve more detail at max zoom
         ],
     )
     result = gdal.VectorTranslate(str(tmp_out), str(GEOJSON_TMP), options=options)
