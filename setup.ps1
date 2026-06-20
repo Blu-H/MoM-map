@@ -26,12 +26,12 @@ $env:REQUESTS_CA_BUNDLE = $env:SSL_CERT_FILE
 
 if (-not (Get-Module -ListAvailable -Name osgeo)) {
     Write-Host "Installing GDAL wheel..."
-    uv pip install ./wheels/gdal-3.11.4-cp312-cp312-win_amd64.whl
+    uv pip install ./first_setup/gdal-3.11.4-cp312-cp312-win_amd64.whl
 }
 
 if (-not (Get-Module -ListAvailable -Name pyproj)) {
     Write-Host "Installing pyproj wheel..."
-    uv pip install ./wheels/pyproj-3.7.2-cp312-cp312-win_amd64.whl
+    uv pip install ./first_setup/pyproj-3.7.2-cp312-cp312-win_amd64.whl
 }
 
 ############################################
