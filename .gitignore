@@ -222,3 +222,4 @@ pygeoapi-config.resolved.yml
 pygeoapi-config.local.yml
 pygeoapi-openapi.yml
 
+*.shp

@@ -18,6 +18,7 @@ import time
 from io import StringIO
 from pathlib import Path
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
 import pandas as pd
 import geopandas as gpd
@@ -25,6 +26,8 @@ import requests
 from osgeo import gdal, ogr
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
+
+load_dotenv()
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 REPO_DIR = SCRIPT_DIR.parent
@@ -36,13 +39,13 @@ METADATA = OUT_DIR / "metadata.json"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-_csv_url = os.environ.get("MOM_CSV_URL")
+_csv_url = os.getenv("MOM_CSV_URL")
 if not _csv_url:
     print("ERROR: MOM_CSV_URL environment variable is not set.")
     sys.exit(1)
 CSV_BASE_URL: str = _csv_url
 ALERT_RANK = {"Warning": 3, "Watch": 2, "Advisory": 1, "Information": 0}
-MINZOOM = 3
+MINZOOM = 5
 MAXZOOM = 10
 
 # ── CSV discovery ─────────────────────────────────────────────────────────────

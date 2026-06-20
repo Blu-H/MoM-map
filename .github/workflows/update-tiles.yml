@@ -12,9 +12,9 @@ on:
   push:
     branches: [main, interactive-map_pmtiles]
     paths:
-      - 'map_viewer/map.html'
-      - 'map_viewer/update_tiles.py'
-      - 'map_viewer/environment.yml'
+      - 'map.html'
+      - 'update_tiles.py'
+      - 'environment.yml'
       - 'data/watershed_shp/**'
   workflow_dispatch:
 
@@ -30,10 +30,13 @@ jobs:
       - name: Set up conda environment
         uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: map_viewer/environment.yml
-          activate-environment: mom-map
+          environment-file: environment.yml
+          activate-environment: myenv
           miniforge-version: latest
           auto-activate-base: false
+
+      - name: Unzip shapefile
+        run: unzip -o data/watershed_shp/watershed_shp.zip -d data/watershed_shp/
 
       - name: Generate PMTiles
         shell: bash -el {0}
@@ -44,9 +47,9 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p deploy/data
-          cp map_viewer/map.html                deploy/index.html
-          cp map_viewer/data/watersheds.pmtiles deploy/data/
-          cp map_viewer/data/metadata.json      deploy/data/
+          cp map.html                deploy/index.html
+          cp data/watersheds.pmtiles deploy/data/
+          cp data/metadata.json      deploy/data/
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages
