@@ -18,23 +18,23 @@
       border-radius: 8px; padding: 12px 14px; width: 250px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.25);
     }
-    #panel h3 { font-size: 14px; font-weight: 700; color: #1a237e; margin-bottom: 6px; }
-    #updated-at { font-size: 13px; color: #555; margin-bottom: 10px; }
+    #panel h3 { font-size: 17px; font-weight: 700; color: #1a237e; margin-bottom: 6px; }
+    #updated-at { font-size: 15px; color: #555; margin-bottom: 10px; }
     #legend { margin-top: 2px; }
-    #legend h4 { font-size: 11px; font-weight: 700; color: #999; margin-bottom: 6px;
+    #legend h4 { font-size: 13px; font-weight: 700; color: #999; margin-bottom: 6px;
                  text-transform: uppercase; letter-spacing: .04em; }
-    .leg { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 12px; }
+    .leg { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 15px; }
     .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
               border: 1px solid rgba(0,0,0,0.15); }
 
-    .maplibregl-popup-content { font-size: 12px; padding: 10px 12px; min-width: 190px; max-height: 260px; overflow-y: auto; }
-    .pop-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; color: #222; }
+    .maplibregl-popup-content { font-size: 14px; padding: 10px 12px; min-width: 190px; max-height: 260px; overflow-y: auto; }
+    .pop-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; color: #222; }
     .pop-badge {
       display: inline-block; padding: 2px 9px; border-radius: 10px;
-      color: #fff; font-size: 11px; font-weight: 700; margin-bottom: 7px;
+      color: #fff; font-size: 13px; font-weight: 700; margin-bottom: 7px;
     }
     .pop-row { display: flex; justify-content: space-between; align-items: flex-start;
-               gap: 8px; margin-bottom: 3px; font-size: 11px; }
+               gap: 8px; margin-bottom: 3px; font-size: 13px; }
     .pop-key { color: #888; flex-shrink: 0; }
     .pop-row span:last-child { text-align: right; }
   </style>
@@ -150,14 +150,20 @@ const map = new maplibregl.Map({
 
 map.touchZoomRotate.disableRotation();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+function preferredScaleUnit() {
+  try {
+    const ms = new Intl.Locale(navigator.language).measurementSystem;
+    return (ms === 'us' || ms === 'uksystem') ? 'imperial' : 'metric';
+  } catch (_) { return 'metric'; }
+}
+map.addControl(new maplibregl.ScaleControl({ unit: preferredScaleUnit() }), 'bottom-left');
 
 // ── Metadata (updated-at + legend) ────────────────────────────────────────────
 fetch('data/tiles/metadata.json')
   .then(r => r.json())
   .then(meta => {
     if (meta.updated_at) {
-      document.getElementById('updated-at').textContent = `Updated at ${meta.updated_at}`;
+      document.getElementById('updated-at').textContent = `${meta.updated_at}`;
     }
     updateLegend(meta.alert_levels ?? []);
   })
