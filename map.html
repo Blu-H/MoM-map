@@ -121,6 +121,22 @@ const map = new maplibregl.Map({
           'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.8, 12, 1.5],
         },
       },
+      {
+        id: 'ws-highlight',
+        type: 'fill',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        filter: ['==', 'pfaf_id', ''],
+        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.35 },
+      },
+      {
+        id: 'ws-highlight-outline',
+        type: 'line',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        filter: ['==', 'pfaf_id', ''],
+        paint: { 'line-color': '#ffffff', 'line-width': 2.5 },
+      },
     ],
   },
   center: [HOUSTON.lng, HOUSTON.lat],
@@ -168,6 +184,9 @@ map.on('click', 'ws-fill', (e) => {
   const alert = p.alert || 'No data';
   const color = ALERT_COLOR[alert] ?? '#999';
 
+  map.setFilter('ws-highlight', ['==', 'pfaf_id', p.pfaf_id]);
+  map.setFilter('ws-highlight-outline', ['==', 'pfaf_id', p.pfaf_id]);
+
   const rows = [
     ['Watershed ID',  p.pfaf_id],
     ['Name',          p.name],
@@ -184,6 +203,11 @@ map.on('click', 'ws-fill', (e) => {
       `<div class="pop-row"><span class="pop-key">${esc(k)}</span><span>${esc(v)}</span></div>`
     ).join('')}
   `).addTo(map);
+});
+
+popup.on('close', () => {
+  map.setFilter('ws-highlight', ['==', 'pfaf_id', '']);
+  map.setFilter('ws-highlight-outline', ['==', 'pfaf_id', '']);
 });
 
 map.on('mouseenter', 'ws-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
