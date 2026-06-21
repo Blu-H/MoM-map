@@ -1,8 +1,4 @@
-# GitHub Actions workflow — copy this file to .github/workflows/update-tiles.yml
-#
-# Runs every 30 minutes (and on relevant pushes / manual trigger).
-# Generates PMTiles from the latest Final_Attributes CSV and deploys
-# map.html + data/ to the gh-pages branch for GitHub Pages.
+# Runs on cron schedule, generates PMTiles from the latest CSV and deploys map.html to the gh-pages branch for GitHub Pages.
 
 name: Update map tiles
 
