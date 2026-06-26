@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MoM Flood Alert Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@3/dist/pmtiles.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #1a1a2e; }
+    #map { position: absolute; inset: 0; }
+
+    #panel {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      background: rgba(255,255,255,0.96);
+      border-radius: 8px; padding: 12px 14px; width: 250px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    }
+    #panel h3 { font-size: 17px; font-weight: 700; color: #1a237e; margin-bottom: 6px; }
+    #updated-at { font-size: 15px; color: #555; margin-bottom: 10px; }
+    #legend { margin-top: 2px; }
+    #legend h4 { font-size: 13px; font-weight: 700; color: #999; margin-bottom: 6px;
+                 text-transform: uppercase; letter-spacing: .04em; }
+    .leg { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; font-size: 15px; }
+    .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+              border: 1px solid rgba(0,0,0,0.15); }
+
+    .maplibregl-popup-content { font-size: 14px; padding: 10px 12px; min-width: 190px; max-height: 260px; overflow-y: auto; }
+    .pop-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; color: #222; }
+    .pop-badge {
+      display: inline-block; padding: 2px 9px; border-radius: 10px;
+      color: #fff; font-size: 13px; font-weight: 700; margin-bottom: 7px;
+    }
+    .pop-row { display: flex; justify-content: space-between; align-items: flex-start;
+               gap: 8px; margin-bottom: 3px; font-size: 13px; }
+    .pop-key { color: #888; flex-shrink: 0; }
+    .pop-row span:last-child { text-align: right; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <h3>MoM Flood Alert Map</h3>
+  <div id="updated-at"></div>
+  <div id="legend">
+    <h4>Alert Level</h4>
+    <div class="leg"><div class="swatch" style="background:#e0e0e0;border-color:#aaa"></div>No data</div>
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const HOUSTON = { lng: -95.37, lat: 29.76, zoom: 7 };
+
+const ALERT_COLOR = {
+  Warning:     '#f57c00',
+  Watch:       '#fbc02d',
+  Advisory:    '#fff176',
+  Information: '#43a047',
+};
+const NO_DATA_COLOR = '#e0e0e0';
+
+// ── PMTiles protocol ──────────────────────────────────────────────────────────
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+// ── Map ───────────────────────────────────────────────────────────────────────
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxzoom: 19,
+      },
+      ws: {
+        type: 'vector',
+        url: 'pmtiles://data/tiles/watersheds.pmtiles',
+      },
+    },
+    layers: [
+      { id: 'osm', type: 'raster', source: 'osm' },
+      {
+        id: 'ws-fill',
+        type: 'fill',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        paint: {
+          'fill-color': [
+            'match', ['get', 'alert'],
+            'Warning',     '#f57c00',
+            'Watch',       '#fbc02d',
+            'Advisory',    '#fff176',
+            'Information', '#43a047',
+            NO_DATA_COLOR
+          ],
+          'fill-opacity': 0.55,
+        },
+      },
+      {
+        id: 'ws-outline',
+        type: 'line',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        paint: {
+          'line-color': [
+            'match', ['get', 'alert'],
+            'Warning',     '#e65100',
+            'Watch',       '#f57f17',
+            'Advisory',    '#f9a825',
+            'Information', '#2e7d32',
+            '#bdbdbd'
+          ],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.8, 12, 1.5],
+        },
+      },
+      {
+        id: 'ws-highlight',
+        type: 'fill',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        filter: ['==', 'pfaf_id', ''],
+        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.35 },
+      },
+      {
+        id: 'ws-highlight-outline',
+        type: 'line',
+        source: 'ws',
+        'source-layer': 'watersheds',
+        filter: ['==', 'pfaf_id', ''],
+        paint: { 'line-color': '#ffffff', 'line-width': 2.5 },
+      },
+    ],
+  },
+  center: [HOUSTON.lng, HOUSTON.lat],
+  zoom: HOUSTON.zoom,
+  minZoom: 2,
+  maxZoom: 8,
+  dragRotate: false,
+  pitchWithRotate: false,
+  maxPitch: 0,
+});
+
+map.touchZoomRotate.disableRotation();
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+function preferredScaleUnit() {
+  try {
+    const ms = new Intl.Locale(navigator.language).measurementSystem;
+    return (ms === 'us' || ms === 'uksystem') ? 'imperial' : 'metric';
+  } catch (_) { return 'metric'; }
+}
+map.addControl(new maplibregl.ScaleControl({ unit: preferredScaleUnit() }), 'bottom-left');
+
+// ── Metadata (updated-at + legend) ────────────────────────────────────────────
+fetch('data/tiles/metadata.json')
+  .then(r => r.json())
+  .then(meta => {
+    if (meta.updated_at) {
+      document.getElementById('updated-at').textContent = `${meta.updated_at}`;
+    }
+    updateLegend(meta.alert_levels ?? []);
+  })
+  .catch(() => updateLegend([]));
+
+function updateLegend(levels) {
+  const order = ['Warning', 'Watch', 'Advisory', 'Information'];
+  const present = levels.length ? new Set(levels) : new Set(order);
+  const el = document.getElementById('legend');
+  el.innerHTML = '<h4>Alert Level</h4>';
+  for (const level of order) {
+    if (!present.has(level)) continue;
+    const color = ALERT_COLOR[level];
+    el.innerHTML += `<div class="leg"><div class="swatch" style="background:${color}"></div>${level}</div>`;
+  }
+  el.innerHTML += `<div class="leg"><div class="swatch" style="background:#e0e0e0;border-color:#aaa"></div>No data</div>`;
+}
+
+// ── Click popup ───────────────────────────────────────────────────────────────
+const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '270px' });
+
+map.on('click', 'ws-fill', (e) => {
+  const p = e.features[0].properties;
+  const alert = p.alert || 'No data';
+  const color = ALERT_COLOR[alert] ?? '#999';
+
+  map.setFilter('ws-highlight', ['==', 'pfaf_id', p.pfaf_id]);
+  map.setFilter('ws-highlight-outline', ['==', 'pfaf_id', p.pfaf_id]);
+
+  const rows = [
+    ['Watershed ID',  p.pfaf_id],
+    ['Name',          p.name],
+    ['Regions',       p.regions],
+    ['Status',        p.status],
+    ['Days to peak',  p.days_until_peak != null ? p.days_until_peak : null],
+  ].filter(([, v]) => v != null && v !== 'null' && v !== 'None' && v !== '');
+
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  popup.setLngLat(e.lngLat).setHTML(`
+    <div class="pop-title">${esc(p.name || 'Watershed')}</div>
+    <div><span class="pop-badge" style="background:${color}">${esc(alert)}</span></div>
+    ${rows.map(([k, v]) =>
+      `<div class="pop-row"><span class="pop-key">${esc(k)}</span><span>${esc(v)}</span></div>`
+    ).join('')}
+  `).addTo(map);
+});
+
+popup.on('close', () => {
+  map.setFilter('ws-highlight', ['==', 'pfaf_id', '']);
+  map.setFilter('ws-highlight-outline', ['==', 'pfaf_id', '']);
+});
+
+map.on('mouseenter', 'ws-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+map.on('mouseleave', 'ws-fill', () => { map.getCanvas().style.cursor = ''; });
+</script>
+</body>
+</html>
