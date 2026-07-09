@@ -52,6 +52,7 @@ jobs:
         run: |
           mkdir -p deploy/data/tiles
           cp map.html                      deploy/index.html
+          cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
           cp data/tiles/watersheds.pmtiles deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
           touch deploy/.nojekyll
