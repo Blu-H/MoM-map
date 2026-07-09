@@ -9,7 +9,6 @@ on:
     branches: 
       - main
     paths:
-      - '*.html'
       - 'update_tiles.py'
       - 'environment.yml'
       - 'data/watershed_shp/**'
@@ -49,7 +48,7 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p deploy/data/tiles deploy/assets
-          cp index.html                      deploy/index.html
+          cp index.html                    deploy/index.html
           cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
           cp data/tiles/watersheds.pmtiles deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
@@ -60,4 +59,4 @@ jobs:
         with:
           branch: gh-pages
           folder: deploy
-          clean: true
+          clean: false
