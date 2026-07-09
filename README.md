@@ -22,6 +22,6 @@ python update_tiles.py
 python serve.py
 ```
 
-Open `http://localhost:8080/map.html`.
+Open `http://localhost:8080/index.html`.
 
 > `python -m http.server` doesn't work — PMTiles requires HTTP Range requests, which Python's built-in server doesn't support. `serve.py` handles this with no extra dependencies.

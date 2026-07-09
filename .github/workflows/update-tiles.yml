@@ -8,15 +8,13 @@ on:
   push:
     branches: 
       - main
-      - dev
     paths:
-      - 'map.html'
+      - '*.html'
       - 'update_tiles.py'
       - 'environment.yml'
       - 'data/watershed_shp/**'
   pull_request:
     branches:
-      - dev
       - main
   workflow_dispatch:
 
@@ -51,7 +49,7 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p deploy/data/tiles deploy/assets
-          cp map.html                      deploy/index.html
+          cp index.html                      deploy/index.html
           cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
           cp data/tiles/watersheds.pmtiles deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
