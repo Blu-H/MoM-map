@@ -2,27 +2,6 @@
 
 Interactive flood alert map: watershed polygons colored by alert level, served as PMTiles, alert data fetched in real time.
 
-**Live:** [mom-map.blu-h.org](https://mom-map.blu-h.org)
-
-![MoM Flood Alert Map](docs/mom-map.png)
-
-## GitHub Pages (serverless)
-
-> **Requirement:** GitHub Pages for private repos requires **GitHub Pro** (personal) or **GitHub Team / Enterprise** (org). Free plans only support public repos.
-
-### How it works
-
-```
-GitHub Action (01:30, 06:30, 13:30, 18:30 UTC)
-    ↓ checks for new Final_Attributes CSV
-    ↓ joins with shapefile via GDAL
-    → gh-pages branch: index.html + data/watersheds.pmtiles + data/metadata.json
-
-Browser → GitHub Pages (CDN)
-    ├── /           → index.html (map.html)
-    └── /data/      → watersheds.pmtiles + metadata.json
-```
-
 ### Setup
 
 **1. Enable GitHub Pages**
