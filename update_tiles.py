@@ -4,12 +4,9 @@ Checks for a new Final_Attributes CSV at the MoM output server.
 If found: joins with watershed shapefile, regenerates data/watersheds.pmtiles.
 
 Usage:
-    python update_tiles.py          # run indefinitely (default interval 1800s)
-    python update_tiles.py --once   # run once and exit
-    python update_tiles.py --interval 3600  # custom interval in seconds
+    python update_tiles.py          # run once and exit
 """
 
-import argparse
 import json
 import os
 import re
@@ -238,19 +235,5 @@ def run_once():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--once", action="store_true", help="Run once and exit")
-    parser.add_argument(
-        "--interval",
-        type=int,
-        default=1800,
-        help="Check interval in seconds (default: 1800)",
-    )
-    args = parser.parse_args()
 
     run_once()
-    if not args.once:
-        print(f"Watching for updates every {args.interval}s. Ctrl+C to stop.")
-        while True:
-            time.sleep(args.interval)
-            run_once()
