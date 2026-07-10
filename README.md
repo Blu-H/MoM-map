@@ -23,9 +23,9 @@ python update_tiles.py
 
 4. Serve the map:
 ```powershell
-python serve.py
+python serve.py -p 8088
 ```
 
-Open `http://localhost:8080/index.html`.
+Open `http://localhost:8088`.
 
 > `python -m http.server` doesn't work — PMTiles requires HTTP Range requests, which Python's built-in server doesn't support. `serve.py` handles this with no extra dependencies.
