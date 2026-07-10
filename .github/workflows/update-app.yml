@@ -9,6 +9,7 @@ on:
     paths:
       - '*.html'
       - 'assets/**'
+      - 'css/**'
   pull_request:
     branches:
       - main
@@ -27,8 +28,9 @@ jobs:
 
       - name: Prepare deployment
         run: |
-          mkdir -p deploy/assets
+          mkdir -p deploy/assets deploy/css
           cp index.html                 deploy/index.html
+          cp css/styles.css             deploy/css/styles.css
           cp assets/bluh-logo-256.png   deploy/assets/bluh-logo-256.png
           touch deploy/.nojekyll
 
