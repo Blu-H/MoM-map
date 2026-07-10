@@ -2,10 +2,6 @@
 
 Interactive flood alert map: watershed polygons colored by alert level, served as PMTiles, alert data fetched in real time.
 
-**Live:** [mom-map.blu-h.org](https://mom-map.blu-h.org)
-
-![MoM Flood Alert Map](docs/mom-map.png)
-
 ### Setup
 
 yml workflow is regularly updating the data
