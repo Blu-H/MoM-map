@@ -8,15 +8,12 @@ on:
   push:
     branches: 
       - main
-      - dev
     paths:
-      - 'map.html'
       - 'update_tiles.py'
       - 'environment.yml'
       - 'data/watershed_shp/**'
   pull_request:
     branches:
-      - dev
       - main
   workflow_dispatch:
 
@@ -46,12 +43,13 @@ jobs:
         shell: bash -el {0}
         env:
           MOM_CSV_URL: ${{ vars.MOM_CSV_URL }}
-        run: python update_tiles.py --once
+        run: python update_tiles.py
 
       - name: Prepare deployment
         run: |
-          mkdir -p deploy/data/tiles
-          cp map.html                      deploy/index.html
+          mkdir -p deploy/data/tiles deploy/assets
+          cp index.html                    deploy/index.html
+          cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
           cp data/tiles/watersheds.pmtiles deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
           touch deploy/.nojekyll
@@ -62,4 +60,4 @@ jobs:
           token: ${{ secrets.DEPLOY_PAT }}
           branch: gh-pages
           folder: deploy
-          clean: true
+          clean: false
