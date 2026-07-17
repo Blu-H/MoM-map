@@ -208,21 +208,21 @@ def run_once():
         info = fetch_latest_csv_info()
     except Exception as e:
         print(f"  CSV fetching error: {e}")
-        return
+        sys.exit(1)
 
     if not info:
         print("  No CSV found.")
-        return
+        sys.exit(1)
 
     last = ""
     if METADATA.exists():
         try:
             last = json.loads(METADATA.read_text()).get("csv", "")
         except Exception:
-            pass
+            sys.exit(1)
     if info["name"] == last and PMTILES_OUT.exists():
         print(f'  No update (latest: {info["name"]})')
-        return
+        sys.exit(1)
 
     print(f'  New CSV: {info["name"]}')
     try:

@@ -42,7 +42,7 @@ jobs:
       - name: Generate PMTiles
         shell: bash -el {0}
         env:
-          MOM_CSV_URL: ${{ vars.MOM_CSV_URL }}
+          MOM_CSV_URL: ${{ secrets.MOM_CSV_URL }}
         run: python update_tiles.py
 
       - name: Prepare deployment
