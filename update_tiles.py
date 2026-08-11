@@ -88,7 +88,7 @@ RETENTION_DAYS = _env_int(
 )  # override via env for manual workflow_dispatch runs
 MAX_SNAPSHOTS = SNAPSHOTS_PER_DAY * RETENTION_DAYS  # last 4×7 snapshots kept
 ONLY_TIMESTAMP_PER_DAY = _env_bool(
-    "ONLY_TIMESTAMP_PER_DAY", False
+    "ONLY_TIMESTAMP_PER_DAY", True
 )  # True: keep only each day's latest snapshot, dropping the other 3/day
 EFFECTIVE_MAX_SNAPSHOTS = RETENTION_DAYS if ONLY_TIMESTAMP_PER_DAY else MAX_SNAPSHOTS
 OVERWRITE_EXISTING = _env_bool(
@@ -191,7 +191,8 @@ def clear_existing_snapshots():
 
 def reconcile_snapshots(snapshots):
     """Re-sort by timestamp, dedup by csv, drop entries with missing files,
-    optionally collapse to one-per-day, keep newest EFFECTIVE_MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files."""
+    optionally collapse to one-per-day, keep newest EFFECTIVE_MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files.
+    """
     ordered = sorted(
         snapshots, key=lambda s: timestamp_sort_key(s.get("csv")), reverse=True
     )

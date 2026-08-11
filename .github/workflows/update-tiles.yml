@@ -27,6 +27,11 @@ on:
         required: false
         type: boolean
         default: false
+      only_timestamp_per_day:
+        description: 'Keep only each day''s latest snapshot instead of all 4/day'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   update-tiles:
@@ -61,6 +66,7 @@ jobs:
           MOM_CSV_URL: ${{ secrets.MOM_CSV_URL }}
           RETENTION_DAYS: ${{ inputs.retention_days || 7 }}
           OVERWRITE_EXISTING: ${{ inputs.overwrite_existing || false }}
+          ONLY_TIMESTAMP_PER_DAY: ${{ inputs.only_timestamp_per_day || false }}
         run: python update_tiles.py
 
       - name: Prepare deployment
