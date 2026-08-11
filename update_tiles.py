@@ -87,6 +87,10 @@ RETENTION_DAYS = _env_int(
     "RETENTION_DAYS", 7
 )  # override via env for manual workflow_dispatch runs
 MAX_SNAPSHOTS = SNAPSHOTS_PER_DAY * RETENTION_DAYS  # last 4×7 snapshots kept
+ONLY_TIMESTAMP_PER_DAY = _env_bool(
+    "ONLY_TIMESTAMP_PER_DAY", False
+)  # True: keep only each day's latest snapshot, dropping the other 3/day
+EFFECTIVE_MAX_SNAPSHOTS = RETENTION_DAYS if ONLY_TIMESTAMP_PER_DAY else MAX_SNAPSHOTS
 OVERWRITE_EXISTING = _env_bool(
     "OVERWRITE_EXISTING", False
 )  # clear tiles/metadata before this run
@@ -137,6 +141,20 @@ def timestamp_sort_key(csv_name):
     return int("".join(parts)) if parts else -1
 
 
+def keep_latest_per_day(items, csv_of):
+    """From items already sorted newest-first, keep only the first (latest)
+    one seen for each calendar day. Used when ONLY_TIMESTAMP_PER_DAY is set."""
+    seen_days, kept = set(), []
+    for item in items:
+        parts = _parse_timestamp(csv_of(item))
+        day = parts[:3] if parts else None
+        if day in seen_days:
+            continue
+        seen_days.add(day)
+        kept.append(item)
+    return kept
+
+
 def parse_date_from_filename(name):
     parts = _parse_timestamp(name)
     if not parts:
@@ -173,7 +191,7 @@ def clear_existing_snapshots():
 
 def reconcile_snapshots(snapshots):
     """Re-sort by timestamp, dedup by csv, drop entries with missing files,
-    keep newest MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files. Called every run so config/state changes take effect immediately."""
+    optionally collapse to one-per-day, keep newest EFFECTIVE_MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files."""
     ordered = sorted(
         snapshots, key=lambda s: timestamp_sort_key(s.get("csv")), reverse=True
     )
@@ -187,7 +205,10 @@ def reconcile_snapshots(snapshots):
         seen_csv.add(csv)
         combined.append(snap)
 
-    kept = combined[:MAX_SNAPSHOTS]
+    if ONLY_TIMESTAMP_PER_DAY:
+        combined = keep_latest_per_day(combined, lambda s: s.get("csv"))
+
+    kept = combined[:EFFECTIVE_MAX_SNAPSHOTS]
     for i, snap in enumerate(kept):
         snap["index"] = i
 
@@ -342,6 +363,9 @@ def run_once():
         print("  No CSV found.")
         sys.exit(1)
 
+    if ONLY_TIMESTAMP_PER_DAY:
+        listing = keep_latest_per_day(listing, lambda c: c["name"])
+
     # Only counts as "have" if the tile file actually exists — a metadata
     # entry with a missing file (interrupted run, partial restore) gets regenerated below.
     have = {
@@ -350,9 +374,9 @@ def run_once():
         if snap.get("csv") and (OUT_DIR / snap.get("file", "")).exists()
     }
 
-    # Backfill: process every CSV in the newest-MAX_SNAPSHOTS window that
-    # isn't captured yet, so a fresh data/tiles fills up in one run.
-    candidates = [c for c in listing[:MAX_SNAPSHOTS] if c["name"] not in have]
+    # Backfill: process every CSV in the newest window that isn't captured
+    # yet, so a fresh data/tiles fills up in one run.
+    candidates = [c for c in listing[:EFFECTIVE_MAX_SNAPSHOTS] if c["name"] not in have]
 
     if not candidates:
         print(f'  No update (latest: {listing[0]["name"]})')
