@@ -126,7 +126,9 @@ def fetch_csv_listing():
                 raise
 
     # Parse response
-    names = set(re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text))
+    raw_names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
+    print(f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique")
+    names = set(raw_names)
     ordered = sorted(names, key=timestamp_sort_key, reverse=True)
     print(f"  [listing] {len(ordered)} CSVs found on server:")
     for n in ordered:
@@ -165,10 +167,9 @@ def keep_latest_per_day(items, csv_of, label=""):
                 kept[-1] = item
             else:
                 print(f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})")
-                continue
-        else:
-            print(f"  [per-day{label}] keeping  {csv_name}")
+            continue
 
+        print(f"  [per-day{label}] keeping  {csv_name}")
         seen_days.add(day)
         kept.append(item)
     return kept
