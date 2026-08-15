@@ -76,6 +76,7 @@ jobs:
           cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
           cp data/tiles/*.pmtiles          deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
+          cp .gitignore                    deploy/.gitignore
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages
