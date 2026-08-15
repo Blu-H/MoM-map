@@ -148,8 +148,15 @@ def keep_latest_per_day(items, csv_of):
     for item in items:
         parts = _parse_timestamp(csv_of(item))
         day = parts[:3] if parts else None
+        hour = parts[3]
+
         if day in seen_days:
-            continue
+            # if later timestamp for the day already written (18), overwrite with 12h timestamp
+            if hour == "12":
+                kept[-1] = item
+            else:
+                continue
+
         seen_days.add(day)
         kept.append(item)
     return kept
