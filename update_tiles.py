@@ -95,6 +95,11 @@ OVERWRITE_EXISTING = _env_bool(
     "OVERWRITE_EXISTING", False
 )  # clear tiles/metadata before this run
 
+print(
+    f"[config] RETENTION_DAYS={RETENTION_DAYS}  ONLY_TIMESTAMP_PER_DAY={ONLY_TIMESTAMP_PER_DAY}"
+    f"  EFFECTIVE_MAX_SNAPSHOTS={EFFECTIVE_MAX_SNAPSHOTS}  OVERWRITE_EXISTING={OVERWRITE_EXISTING}"
+)
+
 # ── CSV discovery ─────────────────────────────────────────────────────────────
 
 
@@ -121,8 +126,13 @@ def fetch_csv_listing():
                 raise
 
     # Parse response
-    names = set(re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text))
+    raw_names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
+    print(f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique")
+    names = set(raw_names)
     ordered = sorted(names, key=timestamp_sort_key, reverse=True)
+    print(f"  [listing] {len(ordered)} CSVs found on server:")
+    for n in ordered:
+        print(f"    {n}")
     return [{"name": n, "download_url": CSV_BASE_URL + n} for n in ordered]
 
 
@@ -141,22 +151,25 @@ def timestamp_sort_key(csv_name):
     return int("".join(parts)) if parts else -1
 
 
-def keep_latest_per_day(items, csv_of):
+def keep_latest_per_day(items, csv_of, label=""):
     """From items already sorted newest-first, keep only the first (latest)
     one seen for each calendar day. Used when ONLY_TIMESTAMP_PER_DAY is set."""
     seen_days, kept = set(), []
     for item in items:
-        parts = _parse_timestamp(csv_of(item))
+        csv_name = csv_of(item)
+        parts = _parse_timestamp(csv_name)
         day = parts[:3] if parts else None
-        hour = parts[3]
+        hour = parts[3] if parts else None
 
         if day in seen_days:
-            # if later timestamp for the day already written (18), overwrite with 12h timestamp
             if hour == "12":
+                print(f"  [per-day{label}] replacing day {'-'.join(day)} entry with 12h: {csv_name}")
                 kept[-1] = item
             else:
-                continue
+                print(f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})")
+            continue
 
+        print(f"  [per-day{label}] keeping  {csv_name}")
         seen_days.add(day)
         kept.append(item)
     return kept
@@ -200,6 +213,7 @@ def reconcile_snapshots(snapshots):
     """Re-sort by timestamp, dedup by csv, drop entries with missing files,
     optionally collapse to one-per-day, keep newest EFFECTIVE_MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files.
     """
+    print(f"  [reconcile] input: {len(snapshots)} snapshot(s)")
     ordered = sorted(
         snapshots, key=lambda s: timestamp_sort_key(s.get("csv")), reverse=True
     )
@@ -208,23 +222,41 @@ def reconcile_snapshots(snapshots):
     combined = []
     for snap in ordered:
         csv = snap.get("csv")
-        if csv in seen_csv or not (OUT_DIR / snap.get("file", "")).exists():
+        file_path = OUT_DIR / snap.get("file", "")
+        if csv in seen_csv:
+            print(f"  [reconcile] dropping duplicate csv: {csv}")
+            continue
+        if not file_path.exists():
+            print(f"  [reconcile] dropping missing file: {snap.get('file')} (csv={csv})")
             continue
         seen_csv.add(csv)
         combined.append(snap)
 
+    print(f"  [reconcile] after dedup/missing-file check: {len(combined)} snapshot(s)")
+
     if ONLY_TIMESTAMP_PER_DAY:
-        combined = keep_latest_per_day(combined, lambda s: s.get("csv"))
+        combined = keep_latest_per_day(combined, lambda s: s.get("csv"), label="/reconcile")
+        print(f"  [reconcile] after per-day filter: {len(combined)} snapshot(s)")
 
     kept = combined[:EFFECTIVE_MAX_SNAPSHOTS]
+    if len(combined) > EFFECTIVE_MAX_SNAPSHOTS:
+        dropped = combined[EFFECTIVE_MAX_SNAPSHOTS:]
+        print(
+            f"  [reconcile] trimmed to EFFECTIVE_MAX_SNAPSHOTS={EFFECTIVE_MAX_SNAPSHOTS};"
+            f" dropped {len(dropped)}: {[s.get('csv') for s in dropped]}"
+        )
     for i, snap in enumerate(kept):
         snap["index"] = i
 
     keep_files = {snap.get("file") for snap in kept}
+    orphans = [f.name for f in OUT_DIR.glob("*.pmtiles") if f.name not in keep_files]
+    if orphans:
+        print(f"  [reconcile] deleting {len(orphans)} orphaned tile(s): {orphans}")
     for tile_file in OUT_DIR.glob("*.pmtiles"):
         if tile_file.name not in keep_files:
             tile_file.unlink()
 
+    print(f"  [reconcile] wrote metadata with {len(kept)} snapshot(s)")
     METADATA.write_text(json.dumps({"snapshots": kept}, indent=2))
     return kept
 
@@ -371,25 +403,40 @@ def run_once():
         print("  No CSV found.")
         sys.exit(1)
 
+    print(f"  [run] raw listing: {len(listing)} CSV(s)")
+
     if ONLY_TIMESTAMP_PER_DAY:
-        listing = keep_latest_per_day(listing, lambda c: c["name"])
+        listing = keep_latest_per_day(listing, lambda c: c["name"], label="/listing")
+        print(f"  [run] after per-day filter: {len(listing)} CSV(s)")
+
+    window = listing[:EFFECTIVE_MAX_SNAPSHOTS]
+    print(f"  [run] window (newest {EFFECTIVE_MAX_SNAPSHOTS}): {[c['name'] for c in window]}")
+    if len(listing) > EFFECTIVE_MAX_SNAPSHOTS:
+        outside = listing[EFFECTIVE_MAX_SNAPSHOTS:]
+        print(f"  [run] outside window (not considered): {[c['name'] for c in outside]}")
 
     # Only counts as "have" if the tile file actually exists — a metadata
     # entry with a missing file (interrupted run, partial restore) gets regenerated below.
+    snapshots = load_snapshots()
     have = {
         snap["csv"]
-        for snap in load_snapshots()
+        for snap in snapshots
         if snap.get("csv") and (OUT_DIR / snap.get("file", "")).exists()
     }
+    print(f"  [run] already have {len(have)} tile(s): {sorted(have)}")
 
     # Backfill: process every CSV in the newest window that isn't captured
     # yet, so a fresh data/tiles fills up in one run.
-    candidates = [c for c in listing[:EFFECTIVE_MAX_SNAPSHOTS] if c["name"] not in have]
+    candidates = [c for c in window if c["name"] not in have]
+    skipped = [c["name"] for c in window if c["name"] in have]
+    if skipped:
+        print(f"  [run] skipping {len(skipped)} already-tiled CSV(s): {skipped}")
 
     if not candidates:
         print(f'  No update (latest: {listing[0]["name"]})')
         sys.exit(1)
 
+    print(f"  [run] {len(candidates)} candidate(s) to process: {[c['name'] for c in candidates]}")
     if len(candidates) > 1:
         print(f"  Backfilling {len(candidates)} missing snapshot(s)...")
 

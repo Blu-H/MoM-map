@@ -32,6 +32,7 @@ jobs:
           cp index.html                 deploy/index.html
           cp css/styles.css             deploy/css/styles.css
           cp assets/bluh-logo-256.png   deploy/assets/bluh-logo-256.png
+          grep -v "^data/tiles/" .gitignore > deploy/.gitignore || true
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages
