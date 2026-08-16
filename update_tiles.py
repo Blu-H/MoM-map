@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Checks for a new Final_Attributes CSV at the MoM output server.
-If found: joins with watershed shapefile, regenerates data/watersheds.pmtiles.
+Checks for a new Final_Attributes CSV at the MoM output server. If found:
+joins with watershed shapefile, adds a snapshot to the rolling window.
 
 Usage:
     python update_tiles.py          # run once and exit
@@ -17,6 +17,24 @@ from pathlib import Path
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
+# gdal.VectorTranslate needs GDAL's own bundled proj.db, not pyproj's copy
+# (which setup.ps1's PROJ_LIB points to) — always override before importing PROJ-dependent modules. No-op on CI (conda sets its own).
+_venv_site_packages = (
+    Path(__file__).parent.resolve() / ".venv" / "Lib" / "site-packages"
+)
+for _proj_dir in (
+    _venv_site_packages / "osgeo" / "data" / "proj",  # GDAL's own copy
+    _venv_site_packages
+    / "pyproj"
+    / "proj_dir"
+    / "share"
+    / "proj",  # pyproj's copy, fallback
+):
+    if _proj_dir.exists():
+        os.environ["PROJ_LIB"] = str(_proj_dir)
+        os.environ["PROJ_DATA"] = str(_proj_dir)
+        break
+
 import pandas as pd
 import geopandas as gpd
 import requests
@@ -29,7 +47,6 @@ load_dotenv()
 REPO_DIR = Path(__file__).parent.resolve()
 SHP_PATH = REPO_DIR / "data" / "watershed_shp" / "Watershed_pfaf_id.shp"
 OUT_DIR = REPO_DIR / "data" / "tiles"
-PMTILES_OUT = OUT_DIR / "watersheds.pmtiles"
 GEOJSON_TMP = OUT_DIR / "watersheds.geojson"
 METADATA = OUT_DIR / "metadata.json"
 
@@ -47,10 +64,47 @@ ALERT_RANK = {"Warning": 3, "Watch": 2, "Advisory": 1, "Information": 0}
 MINZOOM = 2
 MAXZOOM = 6
 
+
+def _env_int(name, default):
+    raw = os.getenv(name)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_bool(name, default=False):
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+SNAPSHOTS_PER_DAY = 4
+RETENTION_DAYS = _env_int(
+    "RETENTION_DAYS", 7
+)  # override via env for manual workflow_dispatch runs
+MAX_SNAPSHOTS = SNAPSHOTS_PER_DAY * RETENTION_DAYS  # last 4×7 snapshots kept
+ONLY_TIMESTAMP_PER_DAY = _env_bool(
+    "ONLY_TIMESTAMP_PER_DAY", True
+)  # True: keep only each day's latest snapshot, dropping the other 3/day
+EFFECTIVE_MAX_SNAPSHOTS = RETENTION_DAYS if ONLY_TIMESTAMP_PER_DAY else MAX_SNAPSHOTS
+OVERWRITE_EXISTING = _env_bool(
+    "OVERWRITE_EXISTING", False
+)  # clear tiles/metadata before this run
+
+print(
+    f"[config] RETENTION_DAYS={RETENTION_DAYS}  ONLY_TIMESTAMP_PER_DAY={ONLY_TIMESTAMP_PER_DAY}"
+    f"  EFFECTIVE_MAX_SNAPSHOTS={EFFECTIVE_MAX_SNAPSHOTS}  OVERWRITE_EXISTING={OVERWRITE_EXISTING}"
+)
+
 # ── CSV discovery ─────────────────────────────────────────────────────────────
 
 
-def fetch_latest_csv_info():
+def fetch_csv_listing():
+    """All CSVs currently published at CSV_BASE_URL, newest name first."""
     max_retries = 5
     retry_delay = 2  # seconds
     r = None
@@ -72,16 +126,144 @@ def fetch_latest_csv_info():
                 raise
 
     # Parse response
-    names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
-    if not names:
-        return None
-    name = sorted(names, reverse=True)[0]
-    return {"name": name, "download_url": CSV_BASE_URL + name}
+    raw_names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
+    print(f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique")
+    names = set(raw_names)
+    ordered = sorted(names, key=timestamp_sort_key, reverse=True)
+    print(f"  [listing] {len(ordered)} CSVs found on server:")
+    for n in ordered:
+        print(f"    {n}")
+    return [{"name": n, "download_url": CSV_BASE_URL + n} for n in ordered]
+
+
+_TIMESTAMP_RE = re.compile(r"Final_Attributes_(\d{4})(\d{2})(\d{2})(\d{2})")
+
+
+def _parse_timestamp(csv_name):
+    """(YYYY, MM, DD, HH) tuple parsed from a Final_Attributes filename, or None."""
+    m = _TIMESTAMP_RE.search(csv_name or "")
+    return m.groups() if m else None
+
+
+def timestamp_sort_key(csv_name):
+    """Embedded YYYYMMDDHH as an int; unparseable names sort as oldest (-1)."""
+    parts = _parse_timestamp(csv_name)
+    return int("".join(parts)) if parts else -1
+
+
+def keep_latest_per_day(items, csv_of, label=""):
+    """From items already sorted newest-first, keep only the first (latest)
+    one seen for each calendar day. Used when ONLY_TIMESTAMP_PER_DAY is set."""
+    seen_days, kept = set(), []
+    for item in items:
+        csv_name = csv_of(item)
+        parts = _parse_timestamp(csv_name)
+        day = parts[:3] if parts else None
+        hour = parts[3] if parts else None
+
+        if day in seen_days:
+            if hour == "12":
+                print(f"  [per-day{label}] replacing day {'-'.join(day)} entry with 12h: {csv_name}")
+                kept[-1] = item
+            else:
+                print(f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})")
+            continue
+
+        print(f"  [per-day{label}] keeping  {csv_name}")
+        seen_days.add(day)
+        kept.append(item)
+    return kept
 
 
 def parse_date_from_filename(name):
-    m = re.search(r"Final_Attributes_(\d{4})(\d{2})(\d{2})(\d{2})", name)
-    return f"{m[1]}-{m[2]}-{m[3]} {m[4]}:00 UTC" if m else name
+    parts = _parse_timestamp(name)
+    if not parts:
+        return name
+    y, mo, d, h = parts
+    return f"{y}-{mo}-{d} {h}:00 UTC"
+
+
+def snapshot_filename(csv_name):
+    parts = _parse_timestamp(csv_name)
+    stamp = "".join(parts) if parts else re.sub(r"\W+", "", csv_name)
+    return f"watersheds_{stamp}.pmtiles"
+
+
+# ── Snapshot metadata (rolling window of MAX_SNAPSHOTS) ───────────────────────
+
+
+def load_snapshots():
+    if not METADATA.exists():
+        return []
+    try:
+        return json.loads(METADATA.read_text()).get("snapshots", [])
+    except Exception:
+        return []
+
+
+def clear_existing_snapshots():
+    """Wipe all tiles + metadata.json so the run starts from an empty window
+    (OVERWRITE_EXISTING=true) — used for a manual, from-scratch rebuild."""
+    for tile_file in OUT_DIR.glob("*.pmtiles"):
+        tile_file.unlink()
+    METADATA.unlink(missing_ok=True)
+
+
+def reconcile_snapshots(snapshots):
+    """Re-sort by timestamp, dedup by csv, drop entries with missing files,
+    optionally collapse to one-per-day, keep newest EFFECTIVE_MAX_SNAPSHOTS, reindex, write metadata.json, and delete any orphaned *.pmtiles files.
+    """
+    print(f"  [reconcile] input: {len(snapshots)} snapshot(s)")
+    ordered = sorted(
+        snapshots, key=lambda s: timestamp_sort_key(s.get("csv")), reverse=True
+    )
+
+    seen_csv = set()
+    combined = []
+    for snap in ordered:
+        csv = snap.get("csv")
+        file_path = OUT_DIR / snap.get("file", "")
+        if csv in seen_csv:
+            print(f"  [reconcile] dropping duplicate csv: {csv}")
+            continue
+        if not file_path.exists():
+            print(f"  [reconcile] dropping missing file: {snap.get('file')} (csv={csv})")
+            continue
+        seen_csv.add(csv)
+        combined.append(snap)
+
+    print(f"  [reconcile] after dedup/missing-file check: {len(combined)} snapshot(s)")
+
+    if ONLY_TIMESTAMP_PER_DAY:
+        combined = keep_latest_per_day(combined, lambda s: s.get("csv"), label="/reconcile")
+        print(f"  [reconcile] after per-day filter: {len(combined)} snapshot(s)")
+
+    kept = combined[:EFFECTIVE_MAX_SNAPSHOTS]
+    if len(combined) > EFFECTIVE_MAX_SNAPSHOTS:
+        dropped = combined[EFFECTIVE_MAX_SNAPSHOTS:]
+        print(
+            f"  [reconcile] trimmed to EFFECTIVE_MAX_SNAPSHOTS={EFFECTIVE_MAX_SNAPSHOTS};"
+            f" dropped {len(dropped)}: {[s.get('csv') for s in dropped]}"
+        )
+    for i, snap in enumerate(kept):
+        snap["index"] = i
+
+    keep_files = {snap.get("file") for snap in kept}
+    orphans = [f.name for f in OUT_DIR.glob("*.pmtiles") if f.name not in keep_files]
+    if orphans:
+        print(f"  [reconcile] deleting {len(orphans)} orphaned tile(s): {orphans}")
+    for tile_file in OUT_DIR.glob("*.pmtiles"):
+        if tile_file.name not in keep_files:
+            tile_file.unlink()
+
+    print(f"  [reconcile] wrote metadata with {len(kept)} snapshot(s)")
+    METADATA.write_text(json.dumps({"snapshots": kept}, indent=2))
+    return kept
+
+
+def save_snapshot(entry):
+    """Prepend a freshly generated snapshot and reconcile the rolling window."""
+    reconcile_snapshots([entry] + load_snapshots())
 
 
 # ── CSV processing ────────────────────────────────────────────────────────────
@@ -157,7 +339,9 @@ def regenerate_pmtiles(alert_df, csv_name):
     print("  Writing GeoJSON...")
     merged.to_file(str(GEOJSON_TMP), driver="GeoJSON")
 
-    tmp_out = PMTILES_OUT.with_suffix(".tmp.pmtiles")
+    fname = snapshot_filename(csv_name)
+    tile_out = OUT_DIR / fname
+    tmp_out = tile_out.with_suffix(".tmp.pmtiles")
     print(f"  Generating PMTiles (zoom {MINZOOM}–{MAXZOOM})...")
     options = gdal.VectorTranslateOptions(
         format="PMTiles",
@@ -176,7 +360,7 @@ def regenerate_pmtiles(alert_df, csv_name):
         )
     result = None  # flush/close
 
-    Path(tmp_out).replace(PMTILES_OUT)
+    Path(tmp_out).replace(tile_out)
     GEOJSON_TMP.unlink(missing_ok=True)
 
     alert_levels = sorted(
@@ -184,54 +368,88 @@ def regenerate_pmtiles(alert_df, csv_name):
         key=lambda a: ALERT_RANK.get(a, -1),
         reverse=True,
     )
-    METADATA.write_text(
-        json.dumps(
-            {
-                "updated_at": parse_date_from_filename(csv_name),
-                "csv": csv_name,
-                "alert_levels": alert_levels,
-                "generated": datetime.now(timezone.utc).isoformat(),
-            },
-            indent=2,
-        )
-    )
+    entry = {
+        "updated_at": parse_date_from_filename(csv_name),
+        "csv": csv_name,
+        "file": fname,
+        "alert_levels": alert_levels,
+        "generated": datetime.now(timezone.utc).isoformat(),
+    }
+    save_snapshot(entry)
 
-    print(f"  Done → {PMTILES_OUT}")
+    print(f"  Done → {tile_out}")
 
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 
 def run_once():
-    print(f"[{datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}] Checking for new CSV...")
+    print(f"[{datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}] Checking for new CSVs...")
+
+    if OVERWRITE_EXISTING:
+        print(f"  OVERWRITE_EXISTING set — clearing {OUT_DIR} before rebuilding.")
+        clear_existing_snapshots()
+
+    # Enforce the current MAX_SNAPSHOTS window up front, independent of network access.
+    reconcile_snapshots(load_snapshots())
+
     try:
-        info = fetch_latest_csv_info()
+        listing = fetch_csv_listing()
     except Exception as e:
         print(f"  CSV fetching error: {e}")
         sys.exit(1)
 
-    if not info:
+    if not listing:
         print("  No CSV found.")
         sys.exit(1)
 
-    last = ""
-    if METADATA.exists():
-        try:
-            last = json.loads(METADATA.read_text()).get("csv", "")
-        except Exception:
-            sys.exit(1)
-    if info["name"] == last and PMTILES_OUT.exists():
-        print(f'  No update (latest: {info["name"]})')
+    print(f"  [run] raw listing: {len(listing)} CSV(s)")
+
+    if ONLY_TIMESTAMP_PER_DAY:
+        listing = keep_latest_per_day(listing, lambda c: c["name"], label="/listing")
+        print(f"  [run] after per-day filter: {len(listing)} CSV(s)")
+
+    window = listing[:EFFECTIVE_MAX_SNAPSHOTS]
+    print(f"  [run] window (newest {EFFECTIVE_MAX_SNAPSHOTS}): {[c['name'] for c in window]}")
+    if len(listing) > EFFECTIVE_MAX_SNAPSHOTS:
+        outside = listing[EFFECTIVE_MAX_SNAPSHOTS:]
+        print(f"  [run] outside window (not considered): {[c['name'] for c in outside]}")
+
+    # Only counts as "have" if the tile file actually exists — a metadata
+    # entry with a missing file (interrupted run, partial restore) gets regenerated below.
+    snapshots = load_snapshots()
+    have = {
+        snap["csv"]
+        for snap in snapshots
+        if snap.get("csv") and (OUT_DIR / snap.get("file", "")).exists()
+    }
+    print(f"  [run] already have {len(have)} tile(s): {sorted(have)}")
+
+    # Backfill: process every CSV in the newest window that isn't captured
+    # yet, so a fresh data/tiles fills up in one run.
+    candidates = [c for c in window if c["name"] not in have]
+    skipped = [c["name"] for c in window if c["name"] in have]
+    if skipped:
+        print(f"  [run] skipping {len(skipped)} already-tiled CSV(s): {skipped}")
+
+    if not candidates:
+        print(f'  No update (latest: {listing[0]["name"]})')
         sys.exit(1)
 
-    print(f'  New CSV: {info["name"]}')
-    try:
-        df = load_csv(info["download_url"])
-        alert_df = process_csv(df)
-        regenerate_pmtiles(alert_df, info["name"])
-    except Exception as e:
-        print(f"  Error: {e}")
-        raise
+    print(f"  [run] {len(candidates)} candidate(s) to process: {[c['name'] for c in candidates]}")
+    if len(candidates) > 1:
+        print(f"  Backfilling {len(candidates)} missing snapshot(s)...")
+
+    # Newest → oldest, so an interrupted backfill has already secured the latest data.
+    for info in candidates:
+        print(f'  New CSV: {info["name"]}')
+        try:
+            df = load_csv(info["download_url"])
+            alert_df = process_csv(df)
+            regenerate_pmtiles(alert_df, info["name"])
+        except Exception as e:
+            print(f"  Error processing {info['name']}: {e}")
+            raise
 
 
 if __name__ == "__main__":

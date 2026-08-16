@@ -16,6 +16,22 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Days of snapshots to retain (4/day). Leave default unless testing.'
+        required: false
+        type: number
+        default: 7
+      overwrite_existing:
+        description: 'Clear all existing tiles/metadata first, then rebuild the window from scratch'
+        required: false
+        type: boolean
+        default: false
+      only_timestamp_per_day:
+        description: 'Keep only each day''s latest snapshot instead of all 4/day'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   update-tiles:
@@ -27,6 +43,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Restore previous snapshots from gh-pages
+        run: |
+          git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null || true
+          git checkout origin/gh-pages -- data/tiles 2>/dev/null || echo "No previous tiles found"
 
       - name: Set up conda environment
         uses: conda-incubator/setup-miniconda@v3
@@ -43,6 +64,9 @@ jobs:
         shell: bash -el {0}
         env:
           MOM_CSV_URL: ${{ secrets.MOM_CSV_URL }}
+          RETENTION_DAYS: ${{ inputs.retention_days || 7 }}
+          OVERWRITE_EXISTING: ${{ inputs.overwrite_existing || false }}
+          ONLY_TIMESTAMP_PER_DAY: ${{ inputs.only_timestamp_per_day || true }}
         run: python update_tiles.py
 
       - name: Prepare deployment
@@ -50,8 +74,9 @@ jobs:
           mkdir -p deploy/data/tiles deploy/assets
           cp index.html                    deploy/index.html
           cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
-          cp data/tiles/watersheds.pmtiles deploy/data/tiles/
+          cp data/tiles/*.pmtiles          deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
+          grep -v "^data/tiles/" .gitignore > deploy/.gitignore || true
           touch deploy/.nojekyll
 
       - name: Deploy to gh-pages

@@ -17,6 +17,10 @@
     </a>
     <h1 id="brand-title">MoM Flood Alert Map</h1>
   </div>
+  <div id="snapshot-selector">
+    <span id="snapshot-label">Updated on</span>
+    <select id="snapshot-select" aria-label="Select snapshot date"></select>
+  </div>
 </header>
 
 <div id="body-content">
@@ -30,7 +34,6 @@
         <h4>Alert Level</h4>
         <div class="leg"><div class="swatch" style="background:#e0e0e0;border-color:#aaa"></div>No data</div>
       </div>
-      <div id="updated-at"></div>
     </section>
     <section class="side-panel__section side-panel__section--bottom side-panel__footer">
       <p class="side-panel__text">© 2026 Blu-H ASBL</p>
@@ -43,12 +46,36 @@
       <polyline points="11 6 5 12 11 18"></polyline>
     </svg>
   </button>
-  <div id="map"></div>
+  <div id="map-area">
+    <div id="map"></div>
+  </div>
 </div>
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const HOUSTON = { lng: -95.37, lat: 29.76, zoom: 7 };
+const DEFAULT_VIEW = { lng: 0, lat: 20, zoom: 2 };
+
+// ── URL hash  (#zoom/lat/lng) ─────────────────────────────────────────────────
+function parseHash() {
+  const m = /^#([\d.]+)\/([-\d.]+)\/([-\d.]+)$/.exec(location.hash);
+  if (!m) return null;
+  const zoom = parseFloat(m[1]), lat = parseFloat(m[2]), lng = parseFloat(m[3]);
+  if (isNaN(zoom) || isNaN(lat) || isNaN(lng)) return null;
+  return { zoom, lat, lng };
+}
+
+function updateHash() {
+  const { lng, lat } = map.getCenter();
+  const zoom = map.getZoom();
+  history.replaceState(null, '', `#${zoom.toFixed(2)}/${lat.toFixed(4)}/${lng.toFixed(4)}`);
+}
+
+window.addEventListener('hashchange', () => {
+  const view = parseHash();
+  if (view) map.easeTo({ center: [view.lng, view.lat], zoom: view.zoom });
+});
+
+const initialView = parseHash() || DEFAULT_VIEW;
 
 const ALERT_COLOR = {
   Warning:     '#f57c00',
@@ -75,67 +102,13 @@ const map = new maplibregl.Map({
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxzoom: 19,
       },
-      ws: {
-        type: 'vector',
-        url: 'pmtiles://data/tiles/watersheds.pmtiles',
-      },
     },
     layers: [
       { id: 'osm', type: 'raster', source: 'osm' },
-      {
-        id: 'ws-fill',
-        type: 'fill',
-        source: 'ws',
-        'source-layer': 'watersheds',
-        paint: {
-          'fill-color': [
-            'match', ['get', 'alert'],
-            'Warning',     '#f57c00',
-            'Watch',       '#fbc02d',
-            'Advisory',    '#fff176',
-            'Information', '#43a047',
-            NO_DATA_COLOR
-          ],
-          'fill-opacity': 0.55,
-        },
-      },
-      {
-        id: 'ws-outline',
-        type: 'line',
-        source: 'ws',
-        'source-layer': 'watersheds',
-        paint: {
-          'line-color': [
-            'match', ['get', 'alert'],
-            'Warning',     '#e65100',
-            'Watch',       '#f57f17',
-            'Advisory',    '#f9a825',
-            'Information', '#2e7d32',
-            '#bdbdbd'
-          ],
-          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.8, 12, 1.5],
-        },
-      },
-      {
-        id: 'ws-highlight',
-        type: 'fill',
-        source: 'ws',
-        'source-layer': 'watersheds',
-        filter: ['==', 'pfaf_id', ''],
-        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.35 },
-      },
-      {
-        id: 'ws-highlight-outline',
-        type: 'line',
-        source: 'ws',
-        'source-layer': 'watersheds',
-        filter: ['==', 'pfaf_id', ''],
-        paint: { 'line-color': '#ffffff', 'line-width': 2.5 },
-      },
     ],
   },
-  center: [HOUSTON.lng, HOUSTON.lat],
-  zoom: HOUSTON.zoom,
+  center: [initialView.lng, initialView.lat],
+  zoom: initialView.zoom,
   minZoom: 2,
   maxZoom: 8,
   dragRotate: false,
@@ -145,6 +118,7 @@ const map = new maplibregl.Map({
 
 map.touchZoomRotate.disableRotation();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.on('moveend', updateHash);
 function preferredScaleUnit() {
   try {
     const ms = new Intl.Locale(navigator.language).measurementSystem;
@@ -164,14 +138,102 @@ function formatUpdatedAt(s) {
   return `${dateStr} at ${timeStr} UTC`;
 }
 
-fetch('data/tiles/metadata.json')
-  .then(r => r.json())
-  .then(meta => {
-    if (meta.updated_at) {
-      document.getElementById('updated-at').textContent = `Updated on ${formatUpdatedAt(meta.updated_at)}`;
-    }
-    updateLegend();
+// ── Snapshots (pmtiles source swap driven by the header dropdown) ─────────────
+function addSnapshotLayers(entry) {
+  for (const id of ['ws-highlight-outline', 'ws-highlight', 'ws-outline', 'ws-fill']) {
+    if (map.getLayer(id)) map.removeLayer(id);
+  }
+  if (map.getSource('ws')) map.removeSource('ws');
+
+  map.addSource('ws', { type: 'vector', url: `pmtiles://data/tiles/${entry.file}` });
+
+  map.addLayer({
+    id: 'ws-fill',
+    type: 'fill',
+    source: 'ws',
+    'source-layer': 'watersheds',
+    paint: {
+      'fill-color': [
+        'match', ['get', 'alert'],
+        'Warning',     '#f57c00',
+        'Watch',       '#fbc02d',
+        'Advisory',    '#fff176',
+        'Information', '#43a047',
+        NO_DATA_COLOR
+      ],
+      'fill-opacity': 0.55,
+    },
   });
+  map.addLayer({
+    id: 'ws-outline',
+    type: 'line',
+    source: 'ws',
+    'source-layer': 'watersheds',
+    paint: {
+      'line-color': [
+        'match', ['get', 'alert'],
+        'Warning',     '#e65100',
+        'Watch',       '#f57f17',
+        'Advisory',    '#f9a825',
+        'Information', '#2e7d32',
+        '#bdbdbd'
+      ],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.8, 12, 1.5],
+    },
+  });
+  map.addLayer({
+    id: 'ws-highlight',
+    type: 'fill',
+    source: 'ws',
+    'source-layer': 'watersheds',
+    filter: ['==', 'pfaf_id', ''],
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.35 },
+  });
+  map.addLayer({
+    id: 'ws-highlight-outline',
+    type: 'line',
+    source: 'ws',
+    'source-layer': 'watersheds',
+    filter: ['==', 'pfaf_id', ''],
+    paint: { 'line-color': '#ffffff', 'line-width': 2.5 },
+  });
+}
+
+function selectSnapshot(entry) {
+  popup.remove();
+  addSnapshotLayers(entry);
+}
+
+function initSnapshots(meta) {
+  const snapshots = (meta.snapshots || []).slice().sort((a, b) => a.index - b.index);
+  if (!snapshots.length) return;
+
+  const selector = document.getElementById('snapshot-selector');
+  const select = document.getElementById('snapshot-select');
+  for (const entry of snapshots) {
+    const opt = document.createElement('option');
+    opt.value = entry.index;
+    opt.textContent = formatUpdatedAt(entry.updated_at);
+    select.appendChild(opt);
+  }
+  select.value = snapshots[0].index; // index 0 = most recent
+  selector.classList.add('ready');
+  selectSnapshot(snapshots[0]);
+
+  select.addEventListener('change', () => {
+    const entry = snapshots.find(s => s.index === +select.value);
+    selectSnapshot(entry);
+  });
+}
+
+fetch('data/tiles/metadata.json')
+  .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); })
+  .then(meta => {
+    const run = () => initSnapshots(meta);
+    if (map.loaded()) run(); else map.once('load', run);
+    updateLegend();
+  })
+  .catch(err => console.warn('Could not load snapshot metadata:', err));
 
 function updateLegend() {
   const order = ['Warning', 'Watch', 'Advisory', 'Information'];
@@ -228,6 +290,15 @@ const panelToggle = document.getElementById('panel-toggle');
 panelToggle.addEventListener('click', () => {
   panel.classList.toggle('collapsed');
 });
+
+// In portrait viewports, interacting with the map or slider closes the panel
+// so it doesn't cover the content underneath.
+function isPortrait() { return window.innerWidth <= window.innerHeight; }
+function closePanelIfPortrait() {
+  if (isPortrait()) panel.classList.add('collapsed');
+}
+map.on('click', closePanelIfPortrait);
+map.on('movestart', (e) => { if (e.originalEvent) closePanelIfPortrait(); }); // only user-initiated moves, not programmatic resize
 </script>
 </body>
 </html>
