@@ -1,0 +1,19 @@
+name: Remove stale demo pages
+description: >
+  Deletes top-level demo_* directories from the gh-pages branch that no
+  longer have a matching sub_pages/demo_* folder on the checked-out branch.
+
+inputs:
+  deploy-token:
+    description: Token with push access to the gh-pages branch
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Remove stale demo pages
+      shell: bash
+      env:
+        DEPLOY_PAT: ${{ inputs.deploy-token }}
+        REPOSITORY: ${{ github.repository }}
+      run: bash "${{ github.action_path }}/remove_stale_demo_pages.sh"
