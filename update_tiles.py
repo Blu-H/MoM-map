@@ -306,6 +306,9 @@ def process_csv(df):
         regions = ", ".join(
             sorted({str(r["name_1"]) for r in rows if pd.notna(r.get("name_1"))})
         )
+        # Hazard_Score uses a large negative sentinel (~-3000) for "no data";
+        # treat anything below -1000 as missing rather than a real score.
+        hazard_score = base.get("Hazard_Score")
         records.append(
             {
                 "pfaf_id": int(float(pfaf)),
@@ -316,6 +319,26 @@ def process_csv(df):
                 "days_until_peak": (
                     int(base["Days_until_peak"])
                     if pd.notna(base.get("Days_until_peak"))
+                    else None
+                ),
+                "hazard_score": (
+                    round(float(hazard_score), 1)
+                    if pd.notna(hazard_score) and hazard_score >= -1000
+                    else None
+                ),
+                "area_km2": (
+                    round(float(base["area_km2"]))
+                    if pd.notna(base.get("area_km2"))
+                    else None
+                ),
+                "riverine_risk": (
+                    round(float(base["Scaled_Riverine_Risk"]), 1)
+                    if pd.notna(base.get("Scaled_Riverine_Risk"))
+                    else None
+                ),
+                "coastal_risk": (
+                    round(float(base["Scaled_Coastal_Risk"]), 1)
+                    if pd.notna(base.get("Scaled_Coastal_Risk"))
                     else None
                 ),
             }
