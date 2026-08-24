@@ -127,7 +127,9 @@ def fetch_csv_listing():
 
     # Parse response
     raw_names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
-    print(f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique")
+    print(
+        f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique"
+    )
     names = set(raw_names)
     ordered = sorted(names, key=timestamp_sort_key, reverse=True)
     print(f"  [listing] {len(ordered)} CSVs found on server:")
@@ -163,10 +165,14 @@ def keep_latest_per_day(items, csv_of, label=""):
 
         if day in seen_days:
             if hour == "12":
-                print(f"  [per-day{label}] replacing day {'-'.join(day)} entry with 12h: {csv_name}")
+                print(
+                    f"  [per-day{label}] replacing day {'-'.join(day)} entry with 12h: {csv_name}"
+                )
                 kept[-1] = item
             else:
-                print(f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})")
+                print(
+                    f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})"
+                )
             continue
 
         print(f"  [per-day{label}] keeping  {csv_name}")
@@ -227,7 +233,9 @@ def reconcile_snapshots(snapshots):
             print(f"  [reconcile] dropping duplicate csv: {csv}")
             continue
         if not file_path.exists():
-            print(f"  [reconcile] dropping missing file: {snap.get('file')} (csv={csv})")
+            print(
+                f"  [reconcile] dropping missing file: {snap.get('file')} (csv={csv})"
+            )
             continue
         seen_csv.add(csv)
         combined.append(snap)
@@ -235,7 +243,9 @@ def reconcile_snapshots(snapshots):
     print(f"  [reconcile] after dedup/missing-file check: {len(combined)} snapshot(s)")
 
     if ONLY_TIMESTAMP_PER_DAY:
-        combined = keep_latest_per_day(combined, lambda s: s.get("csv"), label="/reconcile")
+        combined = keep_latest_per_day(
+            combined, lambda s: s.get("csv"), label="/reconcile"
+        )
         print(f"  [reconcile] after per-day filter: {len(combined)} snapshot(s)")
 
     kept = combined[:EFFECTIVE_MAX_SNAPSHOTS]
@@ -296,6 +306,9 @@ def process_csv(df):
         regions = ", ".join(
             sorted({str(r["name_1"]) for r in rows if pd.notna(r.get("name_1"))})
         )
+        # Hazard_Score uses a large negative sentinel (~-3000) for "no data";
+        # treat anything below -1000 as missing rather than a real score.
+        hazard_score = base.get("Hazard_Score")
         records.append(
             {
                 "pfaf_id": int(float(pfaf)),
@@ -306,6 +319,21 @@ def process_csv(df):
                 "days_until_peak": (
                     int(base["Days_until_peak"])
                     if pd.notna(base.get("Days_until_peak"))
+                    else None
+                ),
+                "hazard_score": (
+                    round(float(hazard_score), 1)
+                    if pd.notna(hazard_score) and hazard_score >= -1000
+                    else None
+                ),
+                "riverine_risk": (
+                    round(float(base["Scaled_Riverine_Risk"]), 1)
+                    if pd.notna(base.get("Scaled_Riverine_Risk"))
+                    else None
+                ),
+                "coastal_risk": (
+                    round(float(base["Scaled_Coastal_Risk"]), 1)
+                    if pd.notna(base.get("Scaled_Coastal_Risk"))
                     else None
                 ),
             }
@@ -363,16 +391,10 @@ def regenerate_pmtiles(alert_df, csv_name):
     Path(tmp_out).replace(tile_out)
     GEOJSON_TMP.unlink(missing_ok=True)
 
-    alert_levels = sorted(
-        alert_df["alert"].dropna().unique().tolist(),
-        key=lambda a: ALERT_RANK.get(a, -1),
-        reverse=True,
-    )
     entry = {
         "updated_at": parse_date_from_filename(csv_name),
         "csv": csv_name,
         "file": fname,
-        "alert_levels": alert_levels,
         "generated": datetime.now(timezone.utc).isoformat(),
     }
     save_snapshot(entry)
@@ -410,10 +432,14 @@ def run_once():
         print(f"  [run] after per-day filter: {len(listing)} CSV(s)")
 
     window = listing[:EFFECTIVE_MAX_SNAPSHOTS]
-    print(f"  [run] window (newest {EFFECTIVE_MAX_SNAPSHOTS}): {[c['name'] for c in window]}")
+    print(
+        f"  [run] window (newest {EFFECTIVE_MAX_SNAPSHOTS}): {[c['name'] for c in window]}"
+    )
     if len(listing) > EFFECTIVE_MAX_SNAPSHOTS:
         outside = listing[EFFECTIVE_MAX_SNAPSHOTS:]
-        print(f"  [run] outside window (not considered): {[c['name'] for c in outside]}")
+        print(
+            f"  [run] outside window (not considered): {[c['name'] for c in outside]}"
+        )
 
     # Only counts as "have" if the tile file actually exists — a metadata
     # entry with a missing file (interrupted run, partial restore) gets regenerated below.
@@ -436,7 +462,9 @@ def run_once():
         print(f'  No update (latest: {listing[0]["name"]})')
         sys.exit(1)
 
-    print(f"  [run] {len(candidates)} candidate(s) to process: {[c['name'] for c in candidates]}")
+    print(
+        f"  [run] {len(candidates)} candidate(s) to process: {[c['name'] for c in candidates]}"
+    )
     if len(candidates) > 1:
         print(f"  Backfilling {len(candidates)} missing snapshot(s)...")
 
