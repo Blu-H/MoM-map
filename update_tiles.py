@@ -326,11 +326,6 @@ def process_csv(df):
                     if pd.notna(hazard_score) and hazard_score >= -1000
                     else None
                 ),
-                "area_km2": (
-                    round(float(base["area_km2"]))
-                    if pd.notna(base.get("area_km2"))
-                    else None
-                ),
                 "riverine_risk": (
                     round(float(base["Scaled_Riverine_Risk"]), 1)
                     if pd.notna(base.get("Scaled_Riverine_Risk"))
