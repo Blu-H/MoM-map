@@ -74,7 +74,7 @@ jobs:
         run: |
           mkdir -p deploy/data/tiles deploy/assets
           cp index.html                    deploy/index.html
-          cp assets/bluh-logo-256.png      deploy/assets/bluh-logo-256.png
+          cp assets/*                      deploy/assets/
           cp data/tiles/*.pmtiles          deploy/data/tiles/
           cp data/tiles/metadata.json      deploy/data/tiles/
           grep -v "^data/tiles/" .gitignore > deploy/.gitignore || true

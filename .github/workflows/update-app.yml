@@ -43,7 +43,7 @@ jobs:
           mkdir -p deploy/assets deploy/css
           cp index.html                 deploy/index.html
           cp css/styles.css             deploy/css/styles.css
-          cp assets/bluh-logo-256.png   deploy/assets/bluh-logo-256.png
+          cp assets/*                   deploy/assets/
           for demo in sub_pages/demo_*/; do
             demo="${demo%/}"
             name="$(basename "$demo")"
