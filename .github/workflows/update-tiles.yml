@@ -64,7 +64,7 @@ jobs:
         shell: bash -el {0}
         env:
           MOM_CSV_URL: ${{ secrets.MOM_CSV_URL }}
-          RETENTION_DAYS: ${{ inputs.retention_days || 7 }}
+          RETENTION_DAYS: ${{ inputs.retention_days || 30 }}
           OVERWRITE_EXISTING: ${{ inputs.overwrite_existing || false }}
           ONLY_TIMESTAMP_PER_DAY: ${{ inputs.only_timestamp_per_day || true }}
         run: python update_tiles.py

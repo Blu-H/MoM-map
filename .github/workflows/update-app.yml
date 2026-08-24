@@ -10,6 +10,8 @@ on:
       - '*.html'
       - 'assets/**'
       - 'css/**'
+      - 'sub_pages/**'
+      - '.github/actions/build-demo-pages/**'
   pull_request:
     branches:
       - main
@@ -26,12 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build demo pages
+        uses: ./.github/actions/build-demo-pages
+
       - name: Prepare deployment
         run: |
           mkdir -p deploy/assets deploy/css
           cp index.html                 deploy/index.html
           cp css/styles.css             deploy/css/styles.css
           cp assets/bluh-logo-256.png   deploy/assets/bluh-logo-256.png
+          for demo in sub_pages/demo_*/; do
+            demo="${demo%/}"
+            name="$(basename "$demo")"
+            if [ -f "$demo/index.html" ]; then
+              mkdir -p "deploy/$name"
+              cp "$demo/index.html" "deploy/$name/index.html"
+            fi
+          done
           grep -v "^data/tiles/" .gitignore > deploy/.gitignore || true
           touch deploy/.nojekyll
 

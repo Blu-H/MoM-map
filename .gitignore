@@ -224,3 +224,6 @@ pygeoapi-openapi.yml
 
 *.shp
 data/tiles/*
+
+# generated per-demo pages (built by .github/actions/build-demo-pages)
+sub_pages/demo_*/index.html

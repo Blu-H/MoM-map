@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>MoM Flood Alert Map</title>
+  <link rel="icon" type="image/png" href="assets/bluh-logo-256.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
   <link href="css/styles.css" rel="stylesheet">
@@ -54,6 +55,7 @@
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
 const DEFAULT_VIEW = { lng: 0, lat: 20, zoom: 2 };
+const MAX_SNAPSHOTS = 7;
 
 // ── URL hash  (#zoom/lat/lng) ─────────────────────────────────────────────────
 function parseHash() {
@@ -205,7 +207,7 @@ function selectSnapshot(entry) {
 }
 
 function initSnapshots(meta) {
-  const snapshots = (meta.snapshots || []).slice().sort((a, b) => a.index - b.index);
+  const snapshots = (meta.snapshots || []).slice().sort((a, b) => a.index - b.index).slice(0, MAX_SNAPSHOTS);
   if (!snapshots.length) return;
 
   const selector = document.getElementById('snapshot-selector');
