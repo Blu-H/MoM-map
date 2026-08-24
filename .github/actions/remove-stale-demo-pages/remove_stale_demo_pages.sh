@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null || true
+git fetch --filter=blob:none --depth=1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null || true
 if ! git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
   echo "No gh-pages branch yet; skipping cleanup."
   exit 0
