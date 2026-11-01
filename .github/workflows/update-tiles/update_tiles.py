@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 # gdal.VectorTranslate needs GDAL's own bundled proj.db, not pyproj's copy
 # (which setup.ps1's PROJ_LIB points to) — always override before importing PROJ-dependent modules. No-op on CI (conda sets its own).
 _venv_site_packages = (
-    Path(__file__).parent.resolve() / ".venv" / "Lib" / "site-packages"
+    Path(__file__).resolve().parents[3] / ".venv" / "Lib" / "site-packages"
 )
 for _proj_dir in (
     _venv_site_packages / "osgeo" / "data" / "proj",  # GDAL's own copy
@@ -44,7 +44,8 @@ from osgeo import gdal, ogr
 
 load_dotenv()
 
-REPO_DIR = Path(__file__).parent.resolve()
+# Repo root (this file is in .github/workflows/update-tiles/)
+REPO_DIR = Path(__file__).resolve().parents[3]
 SHP_PATH = REPO_DIR / "data" / "watershed_shp" / "Watershed_pfaf_id.shp"
 OUT_DIR = REPO_DIR / "data" / "tiles"
 GEOJSON_TMP = OUT_DIR / "watersheds.geojson"
@@ -65,35 +66,18 @@ MINZOOM = 2
 MAXZOOM = 6
 
 
-def _env_int(name, default):
-    raw = os.getenv(name)
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
-
-
-def _env_bool(name, default=False):
-    raw = os.getenv(name)
-    if raw is None or raw == "":
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
-
-
-SNAPSHOTS_PER_DAY = 4
-RETENTION_DAYS = _env_int(
-    "RETENTION_DAYS", 7
-)  # override via env for manual workflow_dispatch runs
-MAX_SNAPSHOTS = SNAPSHOTS_PER_DAY * RETENTION_DAYS  # last 4×7 snapshots kept
-ONLY_TIMESTAMP_PER_DAY = _env_bool(
-    "ONLY_TIMESTAMP_PER_DAY", True
-)  # True: keep only each day's latest snapshot, dropping the other 3/day
-EFFECTIVE_MAX_SNAPSHOTS = RETENTION_DAYS if ONLY_TIMESTAMP_PER_DAY else MAX_SNAPSHOTS
-OVERWRITE_EXISTING = _env_bool(
-    "OVERWRITE_EXISTING", False
-)  # clear tiles/metadata before this run
+from tiles_listing import (  # noqa: E402  stdlib only, shared with check_tiles_update.py
+    CSV_HREF_RE,
+    EFFECTIVE_MAX_SNAPSHOTS,
+    MAX_SNAPSHOTS,
+    ONLY_TIMESTAMP_PER_DAY,
+    OVERWRITE_EXISTING,
+    RETENTION_DAYS,
+    SNAPSHOTS_PER_DAY,
+    _parse_timestamp,
+    keep_latest_per_day,
+    timestamp_sort_key,
+)
 
 print(
     f"[config] RETENTION_DAYS={RETENTION_DAYS}  ONLY_TIMESTAMP_PER_DAY={ONLY_TIMESTAMP_PER_DAY}"
@@ -126,59 +110,16 @@ def fetch_csv_listing():
                 raise
 
     # Parse response
-    raw_names = re.findall(r'href="(Final_Attributes_[^"]+\.csv)"', r.text)
+    raw_names = CSV_HREF_RE.findall(r.text)
     print(
         f"  [listing] {len(raw_names)} raw href(s) matched, {len(set(raw_names))} unique"
     )
     names = set(raw_names)
     ordered = sorted(names, key=timestamp_sort_key, reverse=True)
-    print(f"  [listing] {len(ordered)} CSVs found on server:")
-    for n in ordered:
+    print(f"  [listing] {len(ordered)} CSVs found on server (printing first 8):")
+    for n in ordered[:8]:
         print(f"    {n}")
-    return [{"name": n, "download_url": CSV_BASE_URL + n} for n in ordered]
-
-
-_TIMESTAMP_RE = re.compile(r"Final_Attributes_(\d{4})(\d{2})(\d{2})(\d{2})")
-
-
-def _parse_timestamp(csv_name):
-    """(YYYY, MM, DD, HH) tuple parsed from a Final_Attributes filename, or None."""
-    m = _TIMESTAMP_RE.search(csv_name or "")
-    return m.groups() if m else None
-
-
-def timestamp_sort_key(csv_name):
-    """Embedded YYYYMMDDHH as an int; unparseable names sort as oldest (-1)."""
-    parts = _parse_timestamp(csv_name)
-    return int("".join(parts)) if parts else -1
-
-
-def keep_latest_per_day(items, csv_of, label=""):
-    """From items already sorted newest-first, keep only the first (latest)
-    one seen for each calendar day. Used when ONLY_TIMESTAMP_PER_DAY is set."""
-    seen_days, kept = set(), []
-    for item in items:
-        csv_name = csv_of(item)
-        parts = _parse_timestamp(csv_name)
-        day = parts[:3] if parts else None
-        hour = parts[3] if parts else None
-
-        if day in seen_days:
-            if hour == "12":
-                print(
-                    f"  [per-day{label}] replacing day {'-'.join(day)} entry with 12h: {csv_name}"
-                )
-                kept[-1] = item
-            else:
-                print(
-                    f"  [per-day{label}] skipping {csv_name} (already have a later entry for {'-'.join(day)})"
-                )
-            continue
-
-        print(f"  [per-day{label}] keeping  {csv_name}")
-        seen_days.add(day)
-        kept.append(item)
-    return kept
+    return [{"name": n, "download_url": os.path.join(CSV_BASE_URL, n)} for n in ordered]
 
 
 def parse_date_from_filename(name):
@@ -411,9 +352,9 @@ def run_once():
     if OVERWRITE_EXISTING:
         print(f"  OVERWRITE_EXISTING set — clearing {OUT_DIR} before rebuilding.")
         clear_existing_snapshots()
-
-    # Enforce the current MAX_SNAPSHOTS window up front, independent of network access.
-    reconcile_snapshots(load_snapshots())
+    else:
+        # Enforce the current MAX_SNAPSHOTS window up front, independent of network access.
+        reconcile_snapshots(load_snapshots())
 
     try:
         listing = fetch_csv_listing()
@@ -428,7 +369,11 @@ def run_once():
     print(f"  [run] raw listing: {len(listing)} CSV(s)")
 
     if ONLY_TIMESTAMP_PER_DAY:
-        listing = keep_latest_per_day(listing, lambda c: c["name"], label="/listing")
+        listing = keep_latest_per_day(
+            listing[: EFFECTIVE_MAX_SNAPSHOTS * 8],  # account for max 8 snapshots a day
+            lambda c: c["name"],
+            label="/listing",
+        )
         print(f"  [run] after per-day filter: {len(listing)} CSV(s)")
 
     window = listing[:EFFECTIVE_MAX_SNAPSHOTS]
