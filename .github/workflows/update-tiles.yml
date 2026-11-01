@@ -128,12 +128,12 @@ jobs:
             python3 - <<'EOF'
           import json
           from pathlib import Path
-          for d in (Path("data/tiles")):
-              meta = d / "metadata.json"
+          tiles_path = (Path("data/tiles")):
+              meta = tiles_path / "metadata.json"
               if not meta.exists():
                   continue
               keep = {s.get("file") for s in json.loads(meta.read_text()).get("snapshots", [])}
-              for f in d.glob("*.pmtiles"):
+              for f in tiles_path.glob("*.pmtiles"):
                   if f.name not in keep:
                       print(f"Not publishing {f}")
                       f.unlink()
