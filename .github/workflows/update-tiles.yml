@@ -128,7 +128,7 @@ jobs:
             python3 - <<'EOF'
           import json
           from pathlib import Path
-          tiles_path = (Path("data/tiles")):
+          tiles_path = Path("data/tiles"):
               meta = tiles_path / "metadata.json"
               if not meta.exists():
                   continue
