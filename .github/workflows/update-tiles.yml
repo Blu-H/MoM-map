@@ -1,6 +1,6 @@
 # Publishes the whole map to the gh-pages branch in one deploy (one GitHub Pages build):
-# the app and demo pages, plus new watershed snapshots (Final_Attributes CSVs) and GloFAS
-# gauge snapshots (threspoints CSVs) when the MoM server has any. Runs daily and on changes.
+# the app and demo pages, plus new watershed snapshots (Final_Attributes CSVs) when the 
+# MoM server has any. Runs daily and on changes.
 
 name: Update map
 
@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       retention_days:
-        description: 'Days of snapshots to retain (4/day; gauges 1/day; at most 30 tiles each). Leave default unless testing.'
+        description: 'Days of snapshots to retain (4/day; at most 30 tiles each). Leave default unless testing.'
         required: false
         type: number
         default: 7
@@ -86,22 +86,15 @@ jobs:
             echo "new=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Never fails; sets new=true or new=false
-      - name: Check for new gauge files
-        id: gauges
-        env:
-          GAUGES_TILES_URL: ${{ env.PAGES_URL }}/data/tiles/gauges/
-        run: python3 .github/workflows/update-tiles/check_gauges_update.py
-
       # Only with new data: the scripts add to the published window (metadata.json)
       - name: Restore published snapshots from gh-pages
-        if: steps.tiles.outputs.new == 'true' || steps.gauges.outputs.new == 'true'
+        if: steps.tiles.outputs.new == 'true'
         run: |
           git fetch --depth=1 origin gh-pages:refs/remotes/origin/gh-pages 2>/dev/null || true
           git checkout origin/gh-pages -- data/tiles 2>/dev/null || echo "No previous tiles found"
 
       - name: Set up conda environment
-        if: steps.tiles.outputs.new == 'true' || steps.gauges.outputs.new == 'true'
+        if: steps.tiles.outputs.new == 'true'
         uses: conda-incubator/setup-miniconda@v3
         with:
           environment-file: environment.yml
@@ -117,11 +110,6 @@ jobs:
         if: steps.tiles.outputs.new == 'true'
         shell: bash -el {0}
         run: python .github/workflows/update-tiles/update_tiles.py
-
-      - name: Generate gauge PMTiles
-        if: steps.gauges.outputs.new == 'true'
-        shell: bash -el {0}
-        run: python .github/workflows/update-tiles/update_gauges.py
 
       - name: Build demo pages
         uses: ./.github/actions/build-demo-pages
@@ -140,7 +128,7 @@ jobs:
             python3 - <<'EOF'
           import json
           from pathlib import Path
-          for d in (Path("data/tiles"), Path("data/tiles/gauges")):
+          for d in (Path("data/tiles")):
               meta = d / "metadata.json"
               if not meta.exists():
                   continue
@@ -173,4 +161,4 @@ jobs:
           token: ${{ secrets.DEPLOY_PAT }}
           branch: gh-pages
           folder: deploy
-          clean: ${{ steps.tiles.outputs.new == 'true' || steps.gauges.outputs.new == 'true' }}
+          clean: ${{ steps.tiles.outputs.new == 'true' }}

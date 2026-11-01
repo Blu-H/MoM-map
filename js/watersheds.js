@@ -154,12 +154,7 @@ function updateLegend() {
 // ── Click popup ───────────────────────────────────────────────────────────────
 const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px', closeOnClick: false });
 
-// A click on a gauge point opens the gauge's popup instead (gauges.js)
-const gaugeAt = point => map.getLayer(GAUGES_LAYER) &&
-  map.queryRenderedFeatures(point, { layers: [GAUGES_LAYER] }).length > 0;
-
 map.on('click', 'ws-hit', (e) => {
-  if (gaugeAt(e.point)) return;
   const p = e.features[0].properties;
   const alert = p.alert || 'No data';
   const color = ALERT_COLOR[alert] ?? '#999';
@@ -205,7 +200,7 @@ popup.on('close', () => {
 
 map.on('click', (e) => {
   const features = map.queryRenderedFeatures(e.point, { layers: ['ws-hit'] });
-  if (!features.length && !gaugeAt(e.point)) popup.remove();
+  if (!features.length) popup.remove();
 });
 
 map.on('mouseenter', 'ws-hit', () => { map.getCanvas().style.cursor = 'pointer'; });

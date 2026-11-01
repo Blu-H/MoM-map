@@ -19,7 +19,6 @@ Steps 1-3 are only needed if you want to generate tiles locally.
 3. Generate tiles: 
 ```powershell
 python .github/workflows/update-tiles/update_tiles.py
-python .github/workflows/update-tiles/update_gauges.py
 ```
 
 4. Serve the map:

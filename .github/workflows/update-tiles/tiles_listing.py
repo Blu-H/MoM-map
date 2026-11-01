@@ -3,6 +3,7 @@
 Standard library only, so the CI check for new CSVs (check_tiles_update.py) can use them
 before the conda environment is set up; update_tiles.py imports the same definitions.
 """
+
 import os
 import re
 
@@ -25,7 +26,7 @@ def _env_bool(name, default=False):
 
 
 SNAPSHOTS_PER_DAY = 4
-MAX_TILES = 30  # hard cap on published tiles per layer (watersheds, gauges)
+MAX_TILES = 30  # hard cap on published tiles per layer (watersheds)
 RETENTION_DAYS = min(
     _env_int("RETENTION_DAYS", 7), MAX_TILES
 )  # override via env for manual workflow_dispatch runs
@@ -85,29 +86,3 @@ def keep_latest_per_day(items, csv_of, label=""):
         seen_days.add(day)
         kept.append(item)
     return kept
-
-
-# ── GloFAS gauges (threspoints_YYYYMMDDHH.csv, one file per day) ──────────────
-# Listed next to the Final_Alert folder, in GLOFAS; kept RETENTION_DAYS files, newest first
-GAUGE_HREF_RE = re.compile(r'href="(threspoints_\d{10}\.csv)"')
-
-_GAUGE_TIMESTAMP_RE = re.compile(r"threspoints_(\d{4})(\d{2})(\d{2})(\d{2})")
-
-
-def gauges_url(csv_url):
-    """GLOFAS folder URL from MOM_CSV_URL (its /Final_Alert replaced), or None."""
-    if not csv_url or "/Final_Alert" not in csv_url:
-        return None
-    return csv_url.replace("/Final_Alert", "/GLOFAS", 1)
-
-
-def parse_gauge_timestamp(name):
-    """(YYYY, MM, DD, HH) tuple parsed from a threspoints filename, or None."""
-    m = _GAUGE_TIMESTAMP_RE.search(name or "")
-    return m.groups() if m else None
-
-
-def gauge_sort_key(name):
-    """Embedded YYYYMMDDHH as an int; unparseable names sort as oldest (-1)."""
-    parts = parse_gauge_timestamp(name)
-    return int("".join(parts)) if parts else -1
