@@ -8,7 +8,7 @@ Interactive flood alert map: watershed polygons colored by alert level, served a
 
 ### Setup
 
-yml workflow is regularly updating the data
+The yml workflow publishes the app to gh-pages; watershed snapshots are loaded from the [MoM_Alerts](https://github.com/Blu-H/MoM_Alerts) repo
 
 ### Local development (Windows)
 
