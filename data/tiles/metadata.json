@@ -2,16 +2,16 @@
   "snapshots": [
     {
       "updated_at": "2026-11-01 12:00 UTC",
-      "csv": "Final_Attributes_2026110112HWRF%2BMOM%2BDFO%2BVIIRSUpdated_PDC.csv",
+      "csv": "Final_Attributes_2026110112HAFS%2BMOM%2BDFO%2BVIIRSUpdated_PDC.csv",
       "file": "watersheds_2026110112.pmtiles",
-      "generated": "2026-11-01T23:32:34.415353+00:00",
+      "generated": "2026-11-02T01:51:58.198604+00:00",
       "index": 0
     },
     {
       "updated_at": "2026-10-31 12:00 UTC",
-      "csv": "Final_Attributes_2026103112HWRF%2BMOM%2BDFO%2BVIIRSUpdated_PDC.csv",
+      "csv": "Final_Attributes_2026103112HAFS%2BMOM%2BDFO%2BVIIRSUpdated_PDC.csv",
       "file": "watersheds_2026103112.pmtiles",
-      "generated": "2026-11-01T23:33:17.836599+00:00",
+      "generated": "2026-11-02T01:52:54.724834+00:00",
       "index": 1
     }
   ]
